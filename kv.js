@@ -5,7 +5,10 @@ import { fileURLToPath } from "url";
 import readline from "readline";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = path.join(__dirname, "data");
+export let DATA_DIR = path.join(__dirname, "data");
+export function setDataDir(dir) {
+  DATA_DIR = dir; // helper to set DATA_DIR in testing
+}
 
 const ACL_KEY = "__acl__";
 const META_NS = "__meta__";
@@ -109,7 +112,7 @@ async function get(ns, key, principal) {
 
   const val = await readLast(ns, key);
   if (val === null) process.exit(1);
-  console.log(val);
+  return val;
 }
 
 async function main() {
@@ -165,7 +168,14 @@ async function appendRecord(ns, obj) {
   await fsp.appendFile(file, line, "utf8");
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (
+  process.argv[1] &&
+  fileURLToPath(import.meta.url) === path.resolve(process.argv[1])
+) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
+
+export { set, get, authorize, readLast, rootCmd, nsPath };
