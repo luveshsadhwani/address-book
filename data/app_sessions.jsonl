@@ -1,0 +1,4 @@
+{"k":"__acl__","v":"alice,billing-service"}
+{"k":"session:abc123","v":"{\"uid\":42,\"exp\":1718928000}"}
+{"k":"session:abc456","v":"{\"uid\":43,\"exp\":1718928000}"}
+{"k":"user:123","v":"Jane Doe"}
