@@ -3,6 +3,55 @@ import { promises as fsp } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import readline from "readline";
+/* ---------- HTTP wrapper (built-ins only) ---------- */
+import http from "http";
+import { URL } from "url";
+
+function startServer(port = 8080) {
+  const server = http.createServer(async (req, res) => {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      // Endpoint       /<tenant>/<namespace>/<key>
+      const [, tenant, namespace, ...keyParts] = url.pathname.split("/");
+      const key = keyParts.join("/"); // support slashes in key
+      const principal = req.headers["x-principal"];
+
+      if (!tenant || !namespace || !key || !principal) {
+        res.writeHead(400).end("Bad request");
+        return;
+      }
+      const ns = `${tenant}:${namespace}`;
+
+      if (req.method === "GET") {
+        await authorize(ns, principal); // ACL / root check
+        const value = await readLast(ns, key);
+        if (value === null) {
+          res.writeHead(404).end("Not found");
+          return;
+        }
+        res.writeHead(200, { "Content-Type": "text/plain" }).end(value);
+        return;
+      }
+
+      if (req.method === "PUT") {
+        const chunks = [];
+        for await (const c of req) chunks.push(c);
+        const body = Buffer.concat(chunks).toString("utf8");
+        await set(ns, key, body, principal);
+        res.writeHead(204).end();
+        return;
+      }
+
+      res.writeHead(405).end("Method not allowed");
+    } catch (err) {
+      res.writeHead(403).end(err.message);
+    }
+  });
+
+  server.listen(port, () =>
+    console.log(`KV HTTP server listening on http://localhost:${port}`)
+  );
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export let DATA_DIR = path.join(__dirname, "data");
@@ -168,7 +217,11 @@ async function appendRecord(ns, obj) {
   await fsp.appendFile(file, line, "utf8");
 }
 
-if (
+if (process.argv[2] === "serve") {
+  const port = Number(process.argv[3]) || 8080;
+  startServer(port);
+  //  keep node alive – no call to main()
+} else if (
   process.argv[1] &&
   fileURLToPath(import.meta.url) === path.resolve(process.argv[1])
 ) {
