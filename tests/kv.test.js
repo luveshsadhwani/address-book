@@ -36,4 +36,20 @@ describe("KV core", () => {
       /Malformed JSON/
     );
   });
+
+  it('wildcard ACL "*" makes namespace public', async () => {
+    // bootstrap tenant and root
+    await rootCmd("init", "acme", "alice", "alice");
+
+    // root marks namespace public and writes a value
+    await set("acme:public", "__acl__", "*", "alice");
+    await set("acme:public", "greeting", "hello", "alice");
+
+    // totally unrelated user can read it
+    const val = await readLast("acme:public", "greeting");
+    expect(val).toBe("hello");
+
+    // and authorize() does not throw
+    await expect(authorize("acme:public", "randomUser")).resolves.not.toThrow();
+  });
 });
