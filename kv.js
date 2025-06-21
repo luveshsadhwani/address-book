@@ -51,6 +51,7 @@ function startServer(port = 8080) {
   server.listen(port, () =>
     console.log(`KV HTTP server listening on http://localhost:${port}`)
   );
+  return server; // return server instance for testing
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -231,4 +232,4 @@ if (process.argv[2] === "serve") {
   });
 }
 
-export { set, get, authorize, readLast, rootCmd, nsPath };
+export { set, get, authorize, readLast, rootCmd, nsPath, startServer };
