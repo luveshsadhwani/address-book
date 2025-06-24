@@ -279,6 +279,10 @@ async function main() {
   const principal = args[asIdx + 1];
   args.splice(asIdx, 2);
 
+  const withKeyIdx = args.indexOf("--with-key");
+  const withKey = withKeyIdx !== -1;
+  if (withKey) args.splice(withKeyIdx, 1);
+
   const [cmd, ns, key, ...rest] = args;
   if (!cmd || !ns || !key || (cmd === "set" && rest.length === 0)) {
     console.error("Usage: kv --as <user> <get|set> <namespace> <key> [value]");
@@ -288,6 +292,10 @@ async function main() {
   if (cmd === "root") {
     const [action, tenant, newName] = [ns, key, rest[0]];
     await rootCmd(action, tenant, newName, principal);
+    if (action === "init" && withKey) {
+      // the freshly created root is `newName`
+      await keyCreate(tenant, newName, newName);
+    }
   } else if (cmd === "set") {
     await set(ns, key, rest.join(" "), principal);
   } else if (cmd === "get") {
