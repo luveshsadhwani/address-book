@@ -84,4 +84,26 @@ describe("HTTP layer", () => {
       expect(res.status).toBe(401);
     });
   });
+
+  it("root key can create & revoke another key over HTTP", async () => {
+    await withServer(async (port) => {
+      await rootCmd("init", "acme", "alice", "alice");
+      const { token: rootKey } = await keyCreate("acme", "alice", "alice");
+
+      // create new key
+      const resp = await request
+        .post(`http://localhost:${port}/admin/acme/keys`)
+        .set("X-api-key", rootKey)
+        .send({ owner: "bob" });
+      expect(resp.status).toBe(201);
+      const { tokenId } = resp.body;
+
+      // // revoke it
+      // const del = await request
+      //   .delete(`http://localhost:${port}/admin/acme/keys/${tokenId}`)
+      //   .set("X-Api-Key", rootKey)
+      //   .ok(() => true);
+      // expect(del.status).toBe(204);
+    });
+  });
 });

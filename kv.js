@@ -12,6 +12,30 @@ function startServer(port = 8080) {
   const server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url, `http://${req.headers.host}`);
+      // Admin endpoints start with /admin/
+      if (url.pathname.startsWith(`/admin/`)) {
+        const [, , tenant, ...rest] = url.pathname.split("/");
+        const token = req.headers["x-api-key"];
+        const principal = await verifyApiKey(tenant, token);
+        if (!(await isRoot(principal, tenant))) {
+          res.writeHead(403).end("Not tenant root");
+          return;
+        }
+
+        // POST /admin/<tenant>/keys
+        if (req.method === "POST" && rest[0] === "keys" && rest.length === 1) {
+          const { owner } = JSON.parse(await readBody(req));
+          const { token, tokenId } = await keyCreate(tenant, owner, principal);
+          res
+            .writeHead(201, { "Content-Type": "application/json" })
+            .end(JSON.stringify({ token, tokenId }));
+          return;
+        }
+
+        res.writeHead(404).end("Unknown admin route");
+        return;
+      }
+
       // Endpoint       /<tenant>/<namespace>/<key>
       const [, tenant, namespace, ...keyParts] = url.pathname.split("/");
       const key = keyParts.join("/"); // support slashes in key
@@ -50,6 +74,7 @@ function startServer(port = 8080) {
 
       res.writeHead(405).end("Method not allowed");
     } catch (err) {
+      console.error("Error handling request:", err);
       res.writeHead(403).end(err.message);
     }
   });
@@ -285,6 +310,12 @@ async function appendRecord(ns, obj) {
 
   const line = prefix + JSON.stringify(obj) + "\n";
   await fsp.appendFile(file, line, "utf8");
+}
+
+async function readBody(req) {
+  const chunks = [];
+  for await (const c of req) chunks.push(c);
+  return Buffer.concat(chunks).toString("utf8");
 }
 
 if (process.argv[2] === "serve") {
