@@ -3,6 +3,7 @@ import { promises as fsp } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import readline from "readline";
+import crypto from "node:crypto";
 /* ---------- HTTP wrapper (built-ins only) ---------- */
 import http from "http";
 import { URL } from "url";
@@ -14,7 +15,12 @@ function startServer(port = 8080) {
       // Endpoint       /<tenant>/<namespace>/<key>
       const [, tenant, namespace, ...keyParts] = url.pathname.split("/");
       const key = keyParts.join("/"); // support slashes in key
-      const principal = req.headers["x-principal"];
+      const token = req.headers["x-api-key"];
+      const principal = await verifyApiKey(tenant, token);
+      if (!principal) {
+        res.writeHead(401).end("Invalid API key");
+        return;
+      }
 
       if (!tenant || !namespace || !key || !principal) {
         res.writeHead(400).end("Bad request");
@@ -52,6 +58,20 @@ function startServer(port = 8080) {
     console.log(`KV HTTP server listening on http://localhost:${port}`)
   );
   return server; // return server instance for testing
+}
+
+async function verifyApiKey(tenant, token) {
+  const tokenId = token.slice(0, 8);
+  const rec = await readLast(`${tenant}:__keys__`, tokenId);
+  if (!rec) return null;
+  const { hash, owner, active } = rec;
+  if (!active) return null; // token is inactive
+
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+  if (!crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(tokenHash))) {
+    return null;
+  }
+  return owner;
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -165,6 +185,45 @@ async function get(ns, key, principal) {
   return val;
 }
 
+/**
+ * createKey(tenant, owner) -> { token, tokenId }
+ * Appends a key record to <tenant>:__keys__
+ */
+async function keyCreate(tenant, owner, principal) {
+  if (!(await isRoot(principal, tenant)))
+    throw new Error("Only tenant root may create keys");
+
+  const raw = crypto.randomBytes(32).toString("hex"); // 64-char token
+  const tokenId = raw.slice(0, 8); // first 8 chars = id
+  const hash = crypto.createHash("sha256").update(raw).digest("hex");
+
+  await appendRecord(`${tenant}:__keys__`, {
+    k: tokenId,
+    v: { hash, owner, active: true },
+  });
+  console.log(`New key for ${owner} → ${raw}`); // show once
+  return { token: raw, tokenId };
+}
+
+/**
+ * revokeKey(tenant, tokenId, principal)
+ * Only tenant root may revoke; marks key inactive.
+ */
+async function revokeKey(tenant, tokenId, principal) {
+  if (!(await isRoot(principal, tenant)))
+    throw new Error("Only tenant root may revoke keys");
+
+  const rec = await readLast(`${tenant}:__keys__`, tokenId);
+  if (!rec) throw new Error("Key not found");
+
+  const { hash, owner } = rec;
+  await appendRecord(`${tenant}:__keys__`, {
+    k: tokenId,
+    v: { hash, owner, active: false },
+  });
+  console.log(`Key ${tokenId} revoked`);
+}
+
 async function main() {
   const args = process.argv.slice(2);
 
@@ -189,6 +248,16 @@ async function main() {
     await set(ns, key, rest.join(" "), principal);
   } else if (cmd === "get") {
     await get(ns, key, principal);
+  } else if (cmd === "key") {
+    const [action, tenant, arg] = [ns, key, rest[0]]; // ns holds action
+    if (action === "create") {
+      await keyCreate(tenant, arg, principal); // arg = owner
+    } else if (action === "revoke") {
+      await revokeKey(tenant, arg, principal); // arg = tokenId
+    } else {
+      console.error("Usage: key <create|revoke> …");
+      process.exit(1);
+    }
   } else {
     console.error("Unknown command");
     process.exit(1);
@@ -232,4 +301,13 @@ if (process.argv[2] === "serve") {
   });
 }
 
-export { set, get, authorize, readLast, rootCmd, nsPath, startServer };
+export {
+  set,
+  get,
+  authorize,
+  readLast,
+  rootCmd,
+  nsPath,
+  startServer,
+  keyCreate,
+};
