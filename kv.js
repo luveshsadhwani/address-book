@@ -43,6 +43,14 @@ function startServer(port = 8080) {
           return;
         }
 
+        // POST /admin/<tenant>/rotate-root
+        if (req.method === "POST" && rest[0] === "rotate-root") {
+          const { newRoot } = JSON.parse(await readBody(req));
+          await rootCmd("rotate", tenant, newRoot, principal);
+          res.writeHead(204).end();
+          return;
+        }
+
         res.writeHead(404).end("Unknown admin route");
         return;
       }

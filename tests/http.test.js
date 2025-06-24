@@ -106,4 +106,38 @@ describe("HTTP layer", () => {
       expect(del.status).toBe(204);
     });
   });
+
+  it("old root loses privilege after rotate-root", async () => {
+    await withServer(async (port) => {
+      /* 1 — bootstrap tenant root and get Alice’s root key */
+      await rootCmd("init", "acme", "alice", "alice");
+      const { token: aliceRootKey } = await keyCreate(
+        "acme",
+        "alice",
+        "alice" // caller = current root
+      );
+
+      /* 2 — Alice proves she’s root by creating a user key */
+      const pre = await request
+        .post(`http://localhost:${port}/admin/acme/keys`)
+        .set("X-Api-Key", aliceRootKey)
+        .send({ owner: "serviceA" });
+      expect(pre.status).toBe(201); // success before rotation
+
+      /* 3 — Alice rotates root to Bob */
+      const rotateReq = await request
+        .post(`http://localhost:${port}/admin/acme/rotate-root`)
+        .set("X-Api-Key", aliceRootKey)
+        .send({ newRoot: "bob" });
+      expect(rotateReq.status).toBe(204);
+
+      /* 4 — Alice tries the same admin call again → 403 */
+      const post = await request
+        .post(`http://localhost:${port}/admin/acme/keys`)
+        .set("X-Api-Key", aliceRootKey)
+        .send({ owner: "serviceB" })
+        .ok(() => true); // don’t throw on 4xx
+      expect(post.status).toBe(403);
+    });
+  });
 });
