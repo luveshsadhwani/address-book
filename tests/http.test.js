@@ -98,12 +98,12 @@ describe("HTTP layer", () => {
       expect(resp.status).toBe(201);
       const { tokenId } = resp.body;
 
-      // // revoke it
-      // const del = await request
-      //   .delete(`http://localhost:${port}/admin/acme/keys/${tokenId}`)
-      //   .set("X-Api-Key", rootKey)
-      //   .ok(() => true);
-      // expect(del.status).toBe(204);
+      // revoke it
+      const del = await request
+        .delete(`http://localhost:${port}/admin/acme/keys/${tokenId}`)
+        .set("X-Api-Key", rootKey)
+        .ok(() => true);
+      expect(del.status).toBe(204);
     });
   });
 });

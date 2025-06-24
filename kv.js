@@ -32,6 +32,17 @@ function startServer(port = 8080) {
           return;
         }
 
+        // DELETE /admin/<tenant>/keys/<tokenId>
+        if (
+          req.method === "DELETE" &&
+          rest[0] === "keys" &&
+          rest.length === 2
+        ) {
+          await revokeKey(tenant, rest[1], principal);
+          res.writeHead(204).end();
+          return;
+        }
+
         res.writeHead(404).end("Unknown admin route");
         return;
       }
